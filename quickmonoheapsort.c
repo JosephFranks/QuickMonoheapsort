@@ -31,7 +31,7 @@
 /* If you consider tuning this algorithm, you should consult first:
    Engineering a sort function; Jon Bentley and M. Douglas McIlroy;
    Software - Practice and Experience; Vol. 23 (11), 1249-1265, 1993.  */
-	
+  
 #include <alloca.h>
 #include <limits.h>
 #include <stdlib.h>
@@ -42,37 +42,82 @@
 #include <math.h>
 #include <time.h>
 #include <sys/time.h>
-	
-/* Byte-wise swap two items of size SIZE. */
-#define SWAP(a, b, size)                                                      \
-  do                                                                              \
-	  {                                                                              \
-      size_t __size = (size);                                                      \
-      char *__a = (a), *__b = (b);                                              \
-      do                                                                      \
-        {                                                                      \
-          char __tmp = *__a;                                                      \
-          *__a++ = *__b;                                                      \
-          *__b++ = __tmp;                                                      \
-        } while (--__size > 0);                                                      \
-    } while (0)
 
-#define MOVE(from, to, size)                                                      \
-  do                                                                              \
-    {                                                                              \
-      size_t __size = (size);                                                      \
-      char *__from = (from), *__to = (to);                                              \
-      do                                                                      \
-        {                                                                     \
-          *__to++ = *__from++;                                                    \
-        } while (--__size > 0);                                                      \
-    } while (0)
+/* Byte-wise swap two items of size SIZE. */
+// #define SWAP(a, b, size)                                                      \
+//   do                                                                              \
+//    {                                                                              \
+//       size_t __size = (size);                                                      \
+//       char *__a = (a), *__b = (b);                                              \
+//       do                                                                      \
+//         {                                                                      \
+//           char __tmp = *__a;                                                      \
+//           *__a++ = *__b;                                                      \
+//           *__b++ = __tmp;                                                      \
+//         } while (--__size > 0);                                                      \
+//     } while (0)
+
+// #define MOVE(dst, src, size)                                                      \
+//   do                                                                              \
+//     {                                                                              \
+//       size_t __size = (size);                                                      \
+//       char *__src = (src), *__dst = (dst);                                              \
+//       do                                                                      \
+//         {                                                                     \
+//           *__dst++ = *__src++;                                                    \
+//         } while (--__size > 0);                                                      \
+//     } while (0)
+static inline void MOVE(char *dst, const char *src, size_t size) {
+    if (size == sizeof(uint64_t)) {
+        *(uint64_t *)dst = *(const uint64_t *)src;
+    } else if (size == sizeof(uint32_t)) {
+        *(uint32_t *)dst = *(const uint32_t *)src;
+    } else if (size == 16) {
+        ((uint64_t *)dst)[0] = ((const uint64_t *)src)[0];
+        ((uint64_t *)dst)[1] = ((const uint64_t *)src)[1];
+    } else if (size == 24) {
+        ((uint64_t *)dst)[0] = ((const uint64_t *)src)[0];
+        ((uint64_t *)dst)[1] = ((const uint64_t *)src)[1];
+        ((uint64_t *)dst)[2] = ((const uint64_t *)src)[2];
+    } else if (size == 32) {
+        ((uint64_t *)dst)[0] = ((const uint64_t *)src)[0];
+        ((uint64_t *)dst)[1] = ((const uint64_t *)src)[1];
+        ((uint64_t *)dst)[2] = ((const uint64_t *)src)[2];
+        ((uint64_t *)dst)[3] = ((const uint64_t *)src)[3];
+    } else {
+        memcpy(dst, src, size);
+    }
+}
+
+static inline void SWAP(char *a, char *b, size_t size) {
+    if (size == sizeof(uint64_t)) {
+        uint64_t t = *(uint64_t *)a;
+        *(uint64_t *)a = *(uint64_t *)b;
+        *(uint64_t *)b = t;
+    } else if (size == sizeof(uint32_t)) {
+        uint32_t t = *(uint32_t *)a;
+        *(uint32_t *)a = *(uint32_t *)b;
+        *(uint32_t *)b = t;
+    } else if (size == 16) {
+        uint64_t t0 = ((uint64_t *)a)[0], t1 = ((uint64_t *)a)[1];
+        ((uint64_t *)a)[0] = ((uint64_t *)b)[0];
+        ((uint64_t *)a)[1] = ((uint64_t *)b)[1];
+        ((uint64_t *)b)[0] = t0;
+        ((uint64_t *)b)[1] = t1;
+    } else {
+        uint64_t buffer[8];
+        char *tmp = (size <= sizeof(buffer)) ? (char *)buffer : (char *)alloca(size);
+        memcpy(tmp, a, size);
+        memcpy(a, b, size);
+        memcpy(b, tmp, size);
+    }
+}
 
 static char TMP[sizeof(char)*sizeof(size_t)*2];
 static char* TMP_SWAP_SPACE;
 static int NUM_CMPS;
 static int NUM_MOVES;
-	
+  
 /* Discontinue quicksort algorithm when partition gets below this size.
    This particular magic number was chosen to work best on a Sun 4/260. */
 #define MAX_THRESH 24
@@ -336,7 +381,7 @@ void _quicksort (void *const pbase, size_t total_elems, size_t size, int (*cmp)(
 void quickmonoheapsort (void *const pbase, size_t total_elems, size_t size, int (*cmp)(const void*, const void*)) {
   char *base_ptr = (char *) pbase;
 
-  const size_t max_thresh = HEAP_THRESH * size;
+  const size_t max_thresh = (HEAP_THRESH - 1) * size;
 
   if (total_elems == 0) {
     /* Avoid lossage with unsigned arithmetic below.  */
@@ -363,6 +408,7 @@ void quickmonoheapsort (void *const pbase, size_t total_elems, size_t size, int 
 
       char *mid = lo + size * ((hi - lo) / size >> 1);
 
+      // TODO: Check if >= can be made just >
       if ((*cmp) ((void *) mid, (void *) lo) >= 0) {
         SWAP (mid, lo, size);
         //NUM_MOVES += 3;
@@ -390,13 +436,13 @@ void quickmonoheapsort (void *const pbase, size_t total_elems, size_t size, int 
          that this algorithm runs much faster than others. */
       do
         {
-          while ((*cmp) ((void *) left_ptr, (void *) mid) >= 0) {
+          while ((*cmp) ((void *) left_ptr, (void *) mid) > 0) {
             left_ptr += size;
             //NUM_CMPS++;
           }
           //NUM_CMPS++;
 
-          while ((*cmp) ((void *) mid, (void *) right_ptr) >= 0) {
+          while ((*cmp) ((void *) mid, (void *) right_ptr) > 0) {
             right_ptr -= size;
             //NUM_CMPS++;
           }
@@ -427,9 +473,9 @@ void quickmonoheapsort (void *const pbase, size_t total_elems, size_t size, int 
          ignore one or both.  Otherwise, push the larger partition's
          bounds on the stack and continue sorting the smaller one. */
 
-      if ((size_t) (right_ptr - lo) <= max_thresh)
+      if ((size_t) (right_ptr - lo) < max_thresh)
         {
-          if ((size_t) (hi - left_ptr) <= max_thresh) {
+          if ((size_t) (hi - left_ptr) < max_thresh) {
             /* Ignore both small partitions. */
             //printf("left: %d, right: %d\n", (right_ptr - lo)/size, (hi - left_ptr)/size);
             POP (lo, hi);
@@ -440,7 +486,7 @@ void quickmonoheapsort (void *const pbase, size_t total_elems, size_t size, int 
             lo = left_ptr;
           }
         }
-      else if ((size_t) (hi - left_ptr) <= max_thresh) {
+      else if ((size_t) (hi - left_ptr) < max_thresh) {
         /* Ignore small right partition. */
         //printf("right: %d\n", (hi - left_ptr)/size);
         hi = right_ptr;
@@ -523,7 +569,7 @@ static inline void monoheapsort (void* const data,   // Array to be sorted
        
     TMP_SWAP_SPACE = TMP;
     
-    char* lead_ptr = (char*)(data + (size * (heap_size - 1)));
+    char* lead_ptr = (char*)(data + (size * (heap_size)));
     char* trailing_ptr = (char*)(data + (size * (total_elems - 1)));
 
     // Shift all elements of the array such that the bottom (greatest) heap_size elements
@@ -560,27 +606,27 @@ static inline void monoheapsort (void* const data,   // Array to be sorted
     // element into the root of the heap.  The element we pluck is reinserted into the
     // heap before the final partition is sorted.
 
-    // MOVE(trailing_ptr, TMP_SWAP_SPACE + size, size);
-    // trailing_ptr -= size;
-    // while(trailing_ptr > lead_ptr) {
-    //   SWAP(lead_ptr, trailing_ptr, size);
-    //   trailing_ptr -= size;
-    //   lead_ptr += size;
-    // }
+    MOVE(TMP_SWAP_SPACE + size, trailing_ptr, size);
+    trailing_ptr -= size;
+    while(trailing_ptr > lead_ptr) {
+      SWAP(lead_ptr, trailing_ptr, size);
+      trailing_ptr -= size;
+      lead_ptr += size;
+    }
 
     // Same as above, but with MOVEs instead of SWAPs.
     // Pluck the element to save MOVEs.
-    MOVE(trailing_ptr, TMP_SWAP_SPACE + size, size);
-    trailing_ptr -= size;
-    // Reverse partitions outside heap area
-    MOVE(trailing_ptr, TMP_SWAP_SPACE, size);
-    while(trailing_ptr > lead_ptr) {
-      MOVE(lead_ptr, trailing_ptr, size);
-      trailing_ptr -= size;
-      MOVE(trailing_ptr, lead_ptr, size);
-      lead_ptr += size;
-    }
-    MOVE(TMP_SWAP_SPACE, lead_ptr, size);
+    // MOVE(trailing_ptr, TMP_SWAP_SPACE + size, size);
+    // trailing_ptr -= size;
+    // // Reverse partitions outside heap area
+    // MOVE(trailing_ptr, TMP_SWAP_SPACE, size);
+    // while(trailing_ptr > lead_ptr) {
+    //   MOVE(lead_ptr, trailing_ptr, size);
+    //   trailing_ptr -= size;
+    //   MOVE(trailing_ptr, lead_ptr, size);
+    //   lead_ptr += size;
+    // }
+    // MOVE(TMP_SWAP_SPACE, lead_ptr, size);
 
     lead_ptr = (char*)(data + (size * (total_elems - heap_size - 1)));
 
@@ -615,11 +661,11 @@ static inline void monoheapsort (void* const data,   // Array to be sorted
     trailing_ptr = (char*)(data + (size * (total_elems - 1)));
     char* heap_ptr = H + size;
 
-    MOVE(heap_ptr, trailing_ptr, size);
+    MOVE(trailing_ptr, heap_ptr, size);
     trailing_ptr -= size;
     size_t next;
     while (trailing_ptr > lead_ptr) {
-      MOVE(trailing_ptr, heap_ptr, size);
+      MOVE(heap_ptr, trailing_ptr, size);
       
       // next = (*cmp)((void*)&H[2 * size], (void*)&H[3 * size]) < 0
       //   ? 3
@@ -629,7 +675,7 @@ static inline void monoheapsort (void* const data,   // Array to be sorted
         next++;
       }
       // NUM_CMPS++;
-      MOVE(&H[next * size], trailing_ptr, size);
+      MOVE(trailing_ptr, &H[next * size], size);
       trailing_ptr -= size;
       //NUM_MOVES++;
       //NUM_MOVES++;
@@ -641,14 +687,14 @@ static inline void monoheapsort (void* const data,   // Array to be sorted
     size_t lastIndex = heap_size;
     
     // Move the element we plucked out earlier back into the heap.
-    MOVE(TMP_SWAP_SPACE + size, TMP_SWAP_SPACE, size);
+    MOVE(TMP_SWAP_SPACE, TMP_SWAP_SPACE + size, size);
     // NUM_MOVES++;
     sift_down_floyd(H, lastIndex, 1, size, TMP_SWAP_SPACE, cmp);
 
     // Finally, fall back on standard heapsort for the final heap_size elements.
     while (trailing_ptr > base_ptr) {
-      MOVE(&H[lastIndex * size], TMP_SWAP_SPACE, size);
-      MOVE(heap_ptr, trailing_ptr, size);
+      MOVE(TMP_SWAP_SPACE, &H[lastIndex * size], size);
+      MOVE(trailing_ptr, heap_ptr, size);
       //NUM_MOVES++;     
       //NUM_MOVES++;
 
@@ -674,7 +720,7 @@ static inline void sift_down (
   size_t p;
   size_t c;
   
-  MOVE(&heap[value_index * size], tmp, size);
+  MOVE(tmp, &heap[value_index * size], size);
   //NUM_MOVES++;
 
   p = value_index;
@@ -693,13 +739,13 @@ static inline void sift_down (
       break;
     }
 
-    MOVE(&heap[c * size], &heap[p * size], size);
+    MOVE(&heap[p * size], &heap[c * size], size);
     //NUM_MOVES++;
     
     p = c;                   // go down
   }
 
-  MOVE(tmp, &heap[p * size], size);
+  MOVE(&heap[p * size], tmp, size);
   //NUM_MOVES++;
 }
 
@@ -723,7 +769,7 @@ static inline void sift_down_floyd (
         c++;
       }
 
-      MOVE(&heap[c * size], &heap[p * size], size);
+      MOVE(&heap[p * size], &heap[c * size], size);
       //NUM_MOVES++;
       
       p = c;                   // go down
@@ -757,7 +803,7 @@ static inline void sift_down_floyd (
           break;
         }
 
-        MOVE(&heap[p * size], &heap[c * size], size);
+        MOVE(&heap[c * size], &heap[p * size], size);
         //printf("p: %d\n", *(int*)&heap[p*size]);
         //NUM_CMPS++;
         //NUM_MOVES++;
@@ -765,7 +811,7 @@ static inline void sift_down_floyd (
     }
     
 
-    MOVE(tmp, &heap[c * size], size);
+    MOVE(&heap[c * size], tmp, size);
     //NUM_MOVES++;
 }
 
@@ -891,6 +937,7 @@ void main()
   finish = (u_int64_t)tv.tv_sec*1000000+(u_int64_t)(tv.tv_nsec)/1000;
 
   printf("Quickmonoheapsort Pass 2 time in nanoseconds: %llu, # SWAPS: %d, # CMPS: %d\n", finish-start, NUM_MOVES, NUM_CMPS);
+
   int num_bad = 0;
   for (x = 0; x < SIZE; x++) {
     //printf("%d: %llu\n",x, data[x]);
